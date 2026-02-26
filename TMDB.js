@@ -1,15 +1,15 @@
 // =============UserScript=============
-// @name         TMDB 影视发现组件 (独立纯净原生版)
+// @name         TMDB 榜单
 // @version      1.1.0
-// @description  纯净提取，移除第三方源，完全直连TMDB官方API
+// @description  浏览 TMDB 热门、高分、出品公司及即将上映的影视
 // @author       YourName
 // =============UserScript=============
 
 var WidgetMetadata = {
   id: "forward.tmdb.media.lists.standalone",
-  title: "TMDB 发现",
+  title: "TMDB 榜单",
   description: "浏览 TMDB 热门、高分、出品公司及即将上映的影视",
-  author: "YourName",
+  author: "白了个鹿",
   site: "https://www.themoviedb.org",
   version: "1.1.0",
   requiredVersion: "0.0.1",
