@@ -2,7 +2,7 @@
 // @name         豆瓣榜单大全
 // @version      12.2.0
 // @description  聚合豆瓣所有榜单与高级筛选发现
-// @author       YourName
+// @author       白了个鹿
 // =============UserScript=============
 
 var WidgetMetadata = {
