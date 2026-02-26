@@ -32,7 +32,8 @@ var WidgetMetadata = {
 										,{ title: "剧情扣人、故事性强、不闷的好电影", value: "https://www.douban.com/doulist/2443408/?dt_dapp=1" }
 										,{ title: "BBC评选21世纪100部佳片", value: "https://www.douban.com/doulist/45025038/?dt_dapp=1" }
 										,{ title: "历届奥斯卡最佳影片提名及获奖名单", value: "https://www.douban.com/doulist/37430937/?dt_dapp=1" }
-
+										,{ title: "全球电影票房排行榜🌟至26年1月15日", value: "https://www.douban.com/doulist/1274560/?dt_dapp=1" }
+										
 										// ,{ title: "你的新片单名称", value: "https://www.douban.com/doulist/XXXXXX/" }
 										]
 								},
