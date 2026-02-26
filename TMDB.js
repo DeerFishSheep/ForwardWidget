@@ -2,7 +2,7 @@
 // @name         TMDB 榜单
 // @version      1.1.0
 // @description  浏览 TMDB 热门、高分、出品公司及即将上映的影视
-// @author       YourName
+// @author       白了个鹿
 // =============UserScript=============
 
 var WidgetMetadata = {
