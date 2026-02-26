@@ -7,7 +7,7 @@
 
 var WidgetMetadata = {
     id: "douban_unified_engine_pure",
-    title: "豆瓣榜单大全推送测试",
+    title: "豆瓣榜单大全推送",
     description: "聚合豆瓣所有榜单与高级筛选发现",
     author: "白了个鹿",
     site: "https://m.douban.com",
