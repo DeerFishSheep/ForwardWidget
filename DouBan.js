@@ -481,33 +481,41 @@ async function loadDoubanCustomList(params = {}) {
     if (!url) return []; 
     if (url.includes("doubanapp/dispatch")) url = parseDoubanAppDispatchUrl(url);
 
+    // 🟢 通道 A：处理用户自定义豆列 (doulist) - 已升级为纯 Rexxar API 模式
     if (url.includes("douban.com/doulist/") || url.includes("m.douban.com/doulist/")) {
         const listIdMatch = url.match(/doulist\/(\d+)/);
         if (!listIdMatch) return [];
-        const { start } = getPageParams(params, 25);
-        const pageUrl = `https://www.douban.com/doulist/${listIdMatch[1]}/?start=${start}&sort=seq&playable=0&sub_type=`;
+        const { start, count } = getPageParams(params, 20); // 统一修改为每页 20 条
         
-        const response = await Widget.http.get(pageUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
-        const docId = Widget.dom.parse(response.data);
-        const videoElementIds = Widget.dom.select(docId, ".doulist-item .title a");
+        // 动态构建豆列的 Rexxar API 接口
+        const apiUrl = `https://m.douban.com/rexxar/api/v2/doulist/${listIdMatch[1]}/items?start=${start}&count=${count}&items_only=1&for_mobile=1`;
+        
+        // 发送伪装请求
+        const response = await Widget.http.get(apiUrl, { 
+            headers: { 
+                Referer: `https://m.douban.com/doulist/${listIdMatch[1]}/`, 
+                "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)" 
+            } 
+        });
+        
+        // 豆列的 JSON 响应中，真实的影视数据通常嵌套在 target 或 subject 字段下
+        let rawItems = response.data?.items || [];
+        let extractedItems = rawItems.map(item => item.target || item.subject || item);
 
-        let doubanItems = [];
-        for (const itemId of videoElementIds) {
-            const text = await Widget.dom.text(itemId);
-            const chineseTitle = text.trim().split(' ')[0]; 
-            if (chineseTitle) doubanItems.push({ title: chineseTitle, type: "subject" });
-        }
-        return await processAndEnhanceDoubanItems(doubanItems);
+        return await processAndEnhanceDoubanItems(extractedItems);
     } 
+    // 🔵 通道 B：处理官方精选榜单 (subject_collection)
     else if (url.includes("subject_collection/")) {
         const listIdMatch = url.match(/subject_collection\/(\w+)/);
         if (!listIdMatch) return [];
         const { start, count } = getPageParams(params, 20);
+        
         const apiUrl = `https://m.douban.com/rexxar/api/v2/subject_collection/${listIdMatch[1]}/items?start=${start}&count=${count}&items_only=1&for_mobile=1`;
         
-        const response = await Widget.http.get(apiUrl, { headers: { Referer: url, "User-Agent": "Mozilla/5.0" } });
+        const response = await Widget.http.get(apiUrl, { headers: { Referer: url, "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)" } });
         return await processAndEnhanceDoubanItems(response.data.subject_collection_items || []);
     }
+    
     return [];
 }
 
