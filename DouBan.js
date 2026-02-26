@@ -10,7 +10,7 @@ var WidgetMetadata = {
     title: "豆瓣榜单大全",
     description: "聚合豆瓣所有榜单与高级筛选发现",
     author: "白了个鹿",
-    site: "https://raw.githubusercontent.com/DeerFishSheep/ForwardWidget/refs/heads/main/DouBan.js",
+    site: "https://m.douban.com",
     version: "12.3.0",
     requiredVersion: "0.0.1",
     modules: [
