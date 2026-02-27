@@ -330,7 +330,7 @@ var WidgetMetadata = {
 };
 
 // ==========================================
-// 💡 统一转换引擎：全新三重搜刮机制 (精确、极限、源标题兜底)
+// 💡 统一转换引擎：全新三重搜刮机制 (精确、极限、源标题兜底、防重名歧义)
 // ==========================================
 async function processAndEnhanceDoubanItems(rawItems) {
     const validItems = rawItems.filter(i => {
@@ -358,7 +358,6 @@ async function processAndEnhanceDoubanItems(rawItems) {
             if (idMatch) subjectId = idMatch[1];
         }
 
-        // 清洗中文标题中的季数
         if (searchType === "tv" || searchType === "multi") {
             const seasonRegex = /(.+?)\s*(?:第([一二三四五六七八九十零百\d]+)季|Season\s*\d+|S\d+)(?:\s*.*)?$/i;
             const match = originalTitle.match(seasonRegex);
@@ -376,7 +375,6 @@ async function processAndEnhanceDoubanItems(rawItems) {
         
         const extractedGenres = extractGenresFromText(doubanSubtitle);
 
-        // 初始化搜索状态与结果库
         let bestMatch = null;
         let tmdbResults1 = [];
         let tmdbResults2 = [];
@@ -394,11 +392,19 @@ async function processAndEnhanceDoubanItems(rawItems) {
 
             if (tmdbResults1 && tmdbResults1.length > 0) {
                 if (searchType === "multi") tmdbResults1 = tmdbResults1.filter(r => r.media_type !== "person"); 
-                // 💡 规则1：只比对 title/name，绝不比对 original_title
-                bestMatch = tmdbResults1.find(r => {
+                
+                // 💡 规则1升级：找出所有 title 完全一致的项，坚决不碰 original_title
+                let exactMatches1 = tmdbResults1.filter(r => {
                     const tTitle = (r.title || r.name || "").trim();
                     return tTitle === searchTitle;
                 });
+                
+                if (exactMatches1.length === 1) {
+                    bestMatch = exactMatches1[0]; // 唯一匹配，安全确立
+                } else if (exactMatches1.length > 1) {
+                    // 💡 防重名歧义：发现多个同名结果，拒绝碰运气，强制交由源标题兜底甄别！
+                    bestMatch = null; 
+                }
             }
 
             // ===================================================
@@ -408,12 +414,10 @@ async function processAndEnhanceDoubanItems(rawItems) {
                 let fallbackTitle = searchTitle;
                 let titleChanged = false;
 
-                // 移除·符号后方
                 if (fallbackTitle.includes("·")) {
                     fallbackTitle = fallbackTitle.split("·")[0].trim();
                     titleChanged = true;
                 }
-                // 移除末尾数字
                 const numSuffixRegex = /^(.*?[^\d\s])\s*\d+$/; 
                 const matchNum = fallbackTitle.match(numSuffixRegex);
                 if (matchNum) {
@@ -421,30 +425,35 @@ async function processAndEnhanceDoubanItems(rawItems) {
                     titleChanged = true;
                 }
 
-                // 💡 规则3：只有产生实质清洗时，才进行第二次极限搜索
+                // 只有产生实质清洗时才进行第二次搜索
                 if (titleChanged && fallbackTitle) {
                     const searchParams2 = { query: fallbackTitle, language: 'zh-CN' };
-                    if (releaseYear && searchType !== "multi") searchParams2.year = releaseYear; // 依然携带年份
+                    if (releaseYear && searchType !== "multi") searchParams2.year = releaseYear; 
 
                     let resp2 = await Widget.tmdb.get(`/search/${searchType}`, { params: searchParams2 });
                     tmdbResults2 = resp2.data ? resp2.data.results : resp2.results;
 
                     if (tmdbResults2 && tmdbResults2.length > 0) {
                         if (searchType === "multi") tmdbResults2 = tmdbResults2.filter(r => r.media_type !== "person"); 
-                        // 依然只比对 title/name
-                        bestMatch = tmdbResults2.find(r => {
+                        
+                        let exactMatches2 = tmdbResults2.filter(r => {
                             const tTitle = (r.title || r.name || "").trim();
                             return tTitle === fallbackTitle;
                         });
+
+                        if (exactMatches2.length === 1) {
+                            bestMatch = exactMatches2[0];
+                        } else if (exactMatches2.length > 1) {
+                            bestMatch = null; // 存在同名歧义
+                        }
                     }
                 }
             }
 
             // ===================================================
-            // 🔎 第三重：源标题兜底搜索 (Rexxar 查原名)
+            // 🔎 第三重：源标题兜底与消歧义 (Rexxar 查原名)
             // ===================================================
             if (!bestMatch && subjectId) {
-                // 确定详情接口的具体类型
                 let detailType = searchType;
                 if (detailType === "multi") {
                     detailType = (rawType === "tv") ? "tv" : "movie";
@@ -462,20 +471,19 @@ async function processAndEnhanceDoubanItems(rawItems) {
                     let doubanOrigTitle = detailResp.data?.original_title || "";
 
                     if (doubanOrigTitle) {
-                        // 💡 清洗 original_title：移除类似 " Season 8", "第8季" 及两端空格
+                        // 清洗 original_title 尾部的季数信息与多余空格
                         const cleanOrigRegex = /\s*(Season\s*\d+|第[\d一二三四五六七八九十百零]+季)\s*$/i;
                         doubanOrigTitle = doubanOrigTitle.replace(cleanOrigRegex, "").trim();
 
-                        // 3.1 拿着清洗后的源标题，直接去前两轮存留的 tmdb 库里找
+                        // 3.1 在前两轮产生歧义的存量库里，通过原名精准甄别出唯一的那个
                         const combinedPreviousResults = [...tmdbResults1, ...tmdbResults2];
                         bestMatch = combinedPreviousResults.find(r => {
                             const tOrig = (r.original_title || r.original_name || "").trim();
                             return tOrig.toLowerCase() === doubanOrigTitle.toLowerCase();
                         });
 
-                        // 3.2 如果没找到，则将源标题 URL 编码后发起第三次最终 TMDB 搜索
+                        // 3.2 如果存量库没有，拿着净化后的源标题发起最终 URLEncode 搜索
                         if (!bestMatch) {
-                            // axios 底层会自动处理对象 params 值的 urlencode，此处为安全亦可显示编码但直接传最稳
                             const searchParams3 = { query: doubanOrigTitle, language: 'zh-CN' };
                             
                             let resp3 = await Widget.tmdb.get(`/search/${searchType}`, { params: searchParams3 });
@@ -484,7 +492,7 @@ async function processAndEnhanceDoubanItems(rawItems) {
                             if (tmdbResults3 && tmdbResults3.length > 0) {
                                 if (searchType === "multi") tmdbResults3 = tmdbResults3.filter(r => r.media_type !== "person"); 
                                 
-                                // 💡 此次搜索结果：只拿 TMDB 的 original_title/name 与 豆瓣源标题 进行对比！
+                                // 最终结果比对：只拿 TMDB 的源标题与豆瓣源标题对比
                                 bestMatch = tmdbResults3.find(r => {
                                     const tOrig = (r.original_title || r.original_name || "").trim();
                                     return tOrig.toLowerCase() === doubanOrigTitle.toLowerCase();
@@ -498,28 +506,28 @@ async function processAndEnhanceDoubanItems(rawItems) {
             }
 
             // ===================================================
-            // 💡 规则5：终极首项兜底 (三重精确比对全挂，但有返回结果)
+            // 💡 终极首项兜底 (三重精确比对全挂，但有返回结果)
             // ===================================================
             if (!bestMatch) {
-                // 优先级：第三重结果 > 第一重结果 > 第二重结果
+                // 优先级：第三重原名搜索结果 > 第一重首搜 > 第二重盲搜
                 if (tmdbResults3.length > 0) bestMatch = tmdbResults3[0];
                 else if (tmdbResults1.length > 0) bestMatch = tmdbResults1[0];
                 else if (tmdbResults2.length > 0) bestMatch = tmdbResults2[0];
             }
 
             // ===================================================
-            // 💡 规则6：宁缺毋滥，实在找不到，彻底丢弃！
+            // 💡 宁缺毋滥
             // ===================================================
             if (!bestMatch || !bestMatch.id) {
                 console.warn(`[${originalTitle}] 经历三重搜索仍无匹配结果，宁缺毋滥，已丢弃。`);
                 return null;
             }
 
-            // 成功刮削，完美封装返回！
+            // 成功确立，完美封装
             return {
                 id: String(bestMatch.id),
                 type: "tmdb",
-                title: originalTitle, // 始终保留豆瓣纯正原始名
+                title: originalTitle, // 始终保留豆瓣纯正中文名
                 description: bestMatch.overview || doubanSubtitle, 
                 releaseDate: releaseYear || bestMatch.release_date || bestMatch.first_air_date || "",
                 posterPath: bestMatch.poster_path ? `https://image.tmdb.org/t/p/w500${bestMatch.poster_path}` : extractDoubanCover(item),
@@ -531,14 +539,14 @@ async function processAndEnhanceDoubanItems(rawItems) {
 
         } catch (error) {
             console.error(`[${originalTitle}] TMDB流程彻底崩溃:`, error);
-            return null; // 异常时同理触发宁缺毋滥
+            return null; 
         }
     });
 
     const results = await Promise.all(fetchPromises);
-    // null 彻底清洗掉
     return results.filter(i => i !== null);
 }
+
 
 
 // ==========================================
