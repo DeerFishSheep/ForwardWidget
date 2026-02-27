@@ -192,7 +192,7 @@ var WidgetMetadata = {
 
 				// --- 模块 7：豆瓣·电影推荐 ---
 				{
-						title: "豆瓣·电影推荐",
+						title: "豆瓣·热播电影推荐",
 						requiresWebView: false,
 						functionName: "loadDoubanRecommendMovies",
 						params: [
@@ -254,7 +254,7 @@ var WidgetMetadata = {
 
 				// --- 模块 8：豆瓣·剧集推荐 ---
 				{
-						title: "豆瓣·剧集推荐",
+						title: "豆瓣·热播剧集推荐",
 						requiresWebView: false,
 						functionName: "loadDoubanRecommendShows",
 						params: [
