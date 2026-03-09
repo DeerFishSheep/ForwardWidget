@@ -15,7 +15,7 @@ var WidgetMetadata = {
     requiredVersion: "0.0.1",
     modules: [
         {
-            title: "IMDb 榜单",
+            title: "IMDB 榜单",
             description: "获取 IMDb 官方影视实时排行榜",
             requiresWebView: false,
             functionName: "loadImdbCharts",
