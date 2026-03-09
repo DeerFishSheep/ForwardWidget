@@ -1,17 +1,17 @@
 // =============UserScript=============
 // @name         IMDb 权威榜单聚合
-// @version      2.0.0
-// @description  提取 IMDb JSON-LD 数据，支持电影/剧集分类及多维度排序，TMDB 精准反查
-// @author       YourName
+// @version      2.1.0
+// @description  IMDb 全球权威影视排行榜
+// @author       白了个鹿
 // =============UserScript=============
 
 var WidgetMetadata = {
     id: "imdb_top_charts",
     title: "IMDb 榜单大全",
     description: "IMDb 全球权威影视排行榜",
-    author: "YourName",
+    author: "白了个鹿",
     site: "https://www.imdb.com",
-    version: "2.0.0",
+    version: "2.1.0",
     requiredVersion: "0.0.1",
     modules: [
         // --- 模块 1：IMDb·电影 ---
@@ -25,7 +25,6 @@ var WidgetMetadata = {
                     name: "chart_url", 
                     title: "🎬 榜单选择", 
                     type: "enumeration", 
-                    // 💡 注意：基础 URL 不再携带 sort 参数，交由底层动态拼接
                     value: "https://m.imdb.com/chart/top/",
                     enumOptions: [
                         { title: "Top 250 经典电影", value: "https://m.imdb.com/chart/top/" },
@@ -36,14 +35,16 @@ var WidgetMetadata = {
                     name: "sort_mode", 
                     title: "🔽 排序方式", 
                     type: "enumeration", 
-                    value: "rank%2Casc",
+                    value: "rank", // 💡 移除了 %2C，换成原生逗号
                     enumOptions: [
-                        { title: "🏆 默认排行", value: "rank%2Casc" },
-                        { title: "⭐ IMDb评分", value: "user_rating%2Cdesc" },
-                        { title: "🔥 人气指数", value: "popularity%2Casc" },
-                        { title: "📊 评分数量", value: "num_votes%2Cdesc" }
+                        { title: "🏆 默认排行", value: "rank" },
+                        { title: "⭐ IMDb评分", value: "user_rating,desc" },
+                        { title: "🔥 人气指数", value: "popularity" },
+                        { title: "📊 评分数量", value: "num_votes,desc" }
                     ]
-                }
+                },
+                // 💡 保留 page 参数，用于底层捕获页码
+                { name: "page", title: "页码", type: "page" }
             ]
         },
         // --- 模块 2：IMDb·剧集 ---
@@ -67,28 +68,35 @@ var WidgetMetadata = {
                     name: "sort_mode", 
                     title: "🔽 排序方式", 
                     type: "enumeration", 
-                    value: "rank%2Casc",
+                    value: "rank",
                     enumOptions: [
-                        { title: "🏆 默认排行", value: "rank%2Casc" },
-                        { title: "⭐ IMDb评分", value: "user_rating%2Cdesc" },
-                        { title: "🔥 人气指数", value: "popularity%2Casc" },
-                        { title: "📊 评分数量", value: "num_votes%2Cdesc" }
+                        { title: "🏆 默认排行", value: "rank" },
+                        { title: "⭐ IMDb评分", value: "user_rating,desc" },
+                        { title: "🔥 人气指数", value: "popularity" },
+                        { title: "📊 评分数量", value: "num_votes,desc" }
                     ]
-                }
+                },
+                { name: "page", title: "页码", type: "page" }
             ]
         }
     ]
 };
 
 // ==========================================
-// 💡 IMDb 数据抓取与 TMDB 转换引擎
+// 💡 IMDb 数据抓取与 TMDB 转换引擎 (含切片分页)
 // ==========================================
 async function loadImdbCharts(params = {}) {
     const baseUrl = params.chart_url;
-    const sortMode = params.sort_mode || "rank%2Casc";
+    const sortMode = params.sort_mode || "rank";
     
-    // 动态拼接 URL 与排序参数
-    const url = baseUrl.includes("?") ? `${baseUrl}&sort=${sortMode}` : `${baseUrl}?sort=${sortMode}`;
+    // 💡 获取播放器传来的页码，默认每页展示 20 条
+    const page = parseInt(params.page) || 1;
+    const limit = 20; 
+    
+    // 动态拼接 URL 与排序参数 (使用 encodeURIComponent 自动将逗号转为标准编码)
+    const url = baseUrl.includes("?") 
+        ? `${baseUrl}&sort=${encodeURIComponent(sortMode)}` 
+        : `${baseUrl}?sort=${encodeURIComponent(sortMode)}`;
     
     const headers = {
         'Host': 'm.imdb.com',
@@ -102,49 +110,58 @@ async function loadImdbCharts(params = {}) {
         console.log(`[IMDb] 正在请求榜单数据: ${url}`);
         const response = await Widget.http.get(url, { headers: headers });
         
-        // 使用官方推荐的 Cheerio 句柄解析 HTML
+        // 使用 Cheerio 提取数据
         const $ = Widget.html.load(response.data);
-        
         let rawItems = [];
         
-        // 提取带有 JSON-LD 的 script 标签
         $('script[type="application/ld+json"]').each((index, element) => {
             try {
                 const jsonStr = $(element).html();
                 const jsonData = JSON.parse(jsonStr);
                 
-                // IMDb 的榜单数据通常包裹在 @type 为 ItemList 的对象中
                 if (jsonData["@type"] === "ItemList" && Array.isArray(jsonData.itemListElement)) {
                     rawItems = jsonData.itemListElement;
                 }
             } catch (e) {
-                console.log("[IMDb] 解析单块 JSON-LD 失败，跳过...");
+                console.log("[IMDb] 解析 JSON-LD 失败...");
             }
         });
 
         if (rawItems.length === 0) {
-            console.error("[IMDb] 未能在页面中找到包含 itemListElement 的 JSON-LD 数据！");
+            console.error("[IMDb] 未能提取到榜单数据！");
             return [];
         }
 
-        console.log(`[IMDb] 成功提取 ${rawItems.length} 条数据，开始通过 TMDB 进行反查映射...`);
+        // ==========================================
+        // 🌟 核心分页切片逻辑 🌟
+        // ==========================================
+        const startIdx = (page - 1) * limit;
+        const endIdx = startIdx + limit;
+        
+        // 仅截取当前页码需要的 20 条数据
+        const pagedItems = rawItems.slice(startIdx, endIdx);
+        
+        // 如果截取后为空，说明已经翻到底了，直接返回空数组通知播放器停止加载
+        if (pagedItems.length === 0) {
+            console.log(`[IMDb] 第 ${page} 页：已无更多数据。`);
+            return [];
+        }
 
-        // 遍历处理每个 IMDb 条目，将其交给 TMDB 接口反查
-        const fetchPromises = rawItems.map(async (element) => {
+        console.log(`[IMDb] 第 ${page} 页：提取榜单第 ${startIdx + 1} 到 ${startIdx + pagedItems.length} 名，开始 TMDB 反查...`);
+
+        // 仅针对这 20 条数据发起 TMDB 查验，极大地提升渲染速度
+        const fetchPromises = pagedItems.map(async (element) => {
             const show = element.item || {};
             if (!show.url) return null;
 
-            // 从 IMDb 的 URL 中提取 IMDb ID (如: /title/tt0903747/ -> tt0903747)
             const idMatch = show.url.match(/\/title\/(tt\d+)\//i);
             if (!idMatch) return null;
             const imdbId = idMatch[1];
             
-            // 提取基础数据（用于兜底）
-            const fallbackTitle = show.name || "未知名称";
             const fallbackRating = show.aggregateRating?.ratingValue || "0";
 
             try {
-                // 💡 神级 API：利用 external_source 直接通过 IMDb ID 查找 TMDB 数据库，无视重名歧义
+                // 利用 external_source 直接通过 IMDb ID 查找 TMDB
                 const tmdbResp = await Widget.tmdb.get(`/find/${imdbId}`, { 
                     params: { 
                         external_source: 'imdb_id', 
@@ -156,7 +173,6 @@ async function loadImdbCharts(params = {}) {
                 let tmdbMatch = null;
                 let mediaType = "movie";
 
-                // TMDB 返回的结果会根据类型分类存放在不同数组中
                 if (data.movie_results && data.movie_results.length > 0) {
                     tmdbMatch = data.movie_results[0];
                     mediaType = "movie";
@@ -165,7 +181,6 @@ async function loadImdbCharts(params = {}) {
                     mediaType = "tv";
                 }
 
-                // 如果 TMDB 找到了结果，组装返回完美的高清中文数据
                 if (tmdbMatch) {
                     return {
                         id: String(tmdbMatch.id),
@@ -181,7 +196,6 @@ async function loadImdbCharts(params = {}) {
                     };
                 }
 
-                // 如果 TMDB 彻底没查到 (极少数冷门资源)，宁缺毋滥丢弃
                 return null;
 
             } catch (tmdbError) {
