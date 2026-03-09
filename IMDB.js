@@ -1,5 +1,5 @@
 // =============UserScript=============
-// @name         IMDb 权威榜单聚合
+// @name         IMDB 权威榜单聚合
 // @version      2.2.0
 // @description  IMDb 全球权威影视排行榜
 // @author       白了个鹿
@@ -7,7 +7,7 @@
 
 var WidgetMetadata = {
     id: "imdb_top_charts",
-    title: "IMDb 榜单大全",
+    title: "IMDB 榜单大全",
     description: "IMDb 全球权威影视排行榜",
     author: "白了个鹿",
     site: "https://www.imdb.com",
